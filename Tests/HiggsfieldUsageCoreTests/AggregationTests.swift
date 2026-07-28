@@ -57,4 +57,18 @@ final class AggregationTests: XCTestCase {
         XCTAssertEqual(out.first!, 0.5, accuracy: 0.001)   // avg of 0,1
         XCTAssertEqual(out.last!, 118.5, accuracy: 0.001)  // avg of 118,119
     }
+
+    func testSnapshotCodableRoundtrip() throws {
+        let snap = CreditsSnapshot(
+            credits: 2451.5, plan: "creator",
+            topModels: [CreditsSnapshot.Model(name: "Nano Banana Pro", credits: 486, generations: 243)],
+            windowLabel: "7d", warnBelow: 500,
+            updatedAt: Date(timeIntervalSince1970: 1_785_239_275), error: nil)
+        let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601
+        let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
+        let back = try dec.decode(CreditsSnapshot.self, from: enc.encode(snap))
+        XCTAssertEqual(back.credits, 2451.5)
+        XCTAssertEqual(back.topModels.first?.generations, 243)
+        XCTAssertEqual(back.warnBelow, 500)
+    }
 }
