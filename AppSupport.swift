@@ -35,6 +35,28 @@ extension Color {
     static let hfLimeSolid = Color(red: 209 / 255, green: 254 / 255, blue: 23 / 255)
 }
 
+// MARK: - Assets
+
+enum AppAssets {
+    /// The Higgsfield glyph as a vector PDF, so it stays crisp at any menu bar
+    /// or Retina scale. Loaded once; nil if the resource is missing from the
+    /// bundle, in which case callers fall back to an SF Symbol.
+    static let logo: NSImage? = {
+        guard let url = Bundle.main.url(forResource: "MenuBarIcon", withExtension: "pdf") else { return nil }
+        return NSImage(contentsOf: url)
+    }()
+
+    /// Menu bar glyphs sit around 15pt in a 22pt bar. Template mode lets macOS
+    /// invert it for light/dark menu bars instead of us guessing.
+    static func menuBarIcon(height: CGFloat = 15) -> NSImage? {
+        guard let img = logo?.copy() as? NSImage else { return nil }
+        let aspect = img.size.height > 0 ? img.size.width / img.size.height : 1
+        img.size = NSSize(width: height * aspect, height: height)
+        img.isTemplate = true
+        return img
+    }
+}
+
 // MARK: - Localization
 
 enum Lang: String, CaseIterable, Identifiable {

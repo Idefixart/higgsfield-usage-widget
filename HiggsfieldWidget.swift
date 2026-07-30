@@ -47,12 +47,28 @@ struct CreditsProvider: TimelineProvider {
 
 // MARK: - Pieces
 
+/// The extension has its own bundle, so it carries its own copy of the glyph.
+private let brandLogo: NSImage? = {
+    guard let url = Bundle.main.url(forResource: "MenuBarIcon", withExtension: "pdf") else { return nil }
+    return NSImage(contentsOf: url)
+}()
+
 private struct Header: View {
     var body: some View {
         HStack(spacing: 5) {
-            Image(systemName: "bolt.fill")
-                .font(.system(size: 11))
-                .foregroundColor(.hfLime)
+            Group {
+                if let logo = brandLogo {
+                    Image(nsImage: logo)
+                        .resizable()
+                        .renderingMode(.template)
+                        .aspectRatio(contentMode: .fit)
+                        .frame(height: 12)
+                } else {
+                    Image(systemName: "bolt.fill")
+                        .font(.system(size: 11))
+                }
+            }
+            .foregroundColor(.hfLime)
             Text("Higgsfield")
                 .font(.system(size: 12, weight: .semibold))
             Spacer()

@@ -24,7 +24,9 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         super.init()
 
         if let btn = statusItem.button {
-            btn.image = NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: "Higgsfield Credits")
+            btn.image = AppAssets.menuBarIcon()
+                ?? NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: "Higgsfield Credits")
+            btn.image?.accessibilityDescription = "Higgsfield Credits"
             btn.imagePosition = .imageLeft
             btn.title = " –"
             btn.action = #selector(togglePopover)

@@ -17,6 +17,28 @@ func relativeTime(_ d: Date?, lang: Lang) -> String {
 
 // MARK: - Building blocks
 
+/// The Higgsfield glyph, tinted with the brand lime. Falls back to an SF
+/// Symbol if the bundled vector is missing.
+struct BrandMark: View {
+    var height: CGFloat = 15
+
+    var body: some View {
+        Group {
+            if let logo = AppAssets.logo {
+                Image(nsImage: logo)
+                    .resizable()
+                    .renderingMode(.template)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(height: height)
+            } else {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: height))
+            }
+        }
+        .foregroundColor(.hfLime)
+    }
+}
+
 struct SectionLabel: View {
     let icon: String
     let title: String
@@ -175,9 +197,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 12) {
             // Header
             HStack(spacing: 8) {
-                Image(systemName: "bolt.fill")
-                    .font(.system(size: 15))
-                    .foregroundColor(.hfLime)
+                BrandMark(height: 16)
                 Text(store.t("app.name"))
                     .font(.system(size: 15, weight: .semibold))
                 Spacer()

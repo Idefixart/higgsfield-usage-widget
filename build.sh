@@ -45,7 +45,21 @@ mkdir -p "$APP_BUNDLE/Contents/MacOS"
 mkdir -p "$APP_BUNDLE/Contents/Resources"
 cp "$BUILD_DIR/HiggsfieldUsage" "$APP_BUNDLE/Contents/MacOS/HiggsfieldUsage"
 
-# Optional app icon
+# Brand glyph, loaded at runtime as a template image for the menu bar
+cp "$SCRIPT_DIR/MenuBarIcon.pdf" "$APP_BUNDLE/Contents/Resources/MenuBarIcon.pdf"
+
+# App icon: regenerate the .icns whenever the 1024px master is present
+if [ -f "$SCRIPT_DIR/AppIcon.png" ]; then
+    ISET="$BUILD_DIR/AppIcon.iconset"
+    rm -rf "$ISET"
+    mkdir -p "$ISET"
+    SIZES=(16 16x16 32 16x16@2x 32 32x32 64 32x32@2x 128 128x128 256 128x128@2x 256 256x256 512 256x256@2x 512 512x512 1024 512x512@2x)
+    for ((i=0; i<${#SIZES[@]}; i+=2)); do
+        sips -z "${SIZES[$i]}" "${SIZES[$i]}" "$SCRIPT_DIR/AppIcon.png" \
+            --out "$ISET/icon_${SIZES[$((i+1))]}.png" >/dev/null
+    done
+    iconutil -c icns "$ISET" -o "$SCRIPT_DIR/AppIcon.icns"
+fi
 if [ -f "$SCRIPT_DIR/AppIcon.icns" ]; then
     cp "$SCRIPT_DIR/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
 fi
@@ -82,7 +96,10 @@ PLIST
 # --- Assemble widget extension (.appex) inside Contents/PlugIns ---
 APPEX="$APP_BUNDLE/Contents/PlugIns/HiggsfieldUsageWidget.appex"
 mkdir -p "$APPEX/Contents/MacOS"
+mkdir -p "$APPEX/Contents/Resources"
 cp "$BUILD_DIR/HiggsfieldUsageWidgetExt" "$APPEX/Contents/MacOS/HiggsfieldUsageWidgetExt"
+# The extension resolves Bundle.main against itself, so it needs its own copy
+cp "$SCRIPT_DIR/MenuBarIcon.pdf" "$APPEX/Contents/Resources/MenuBarIcon.pdf"
 
 cat > "$APPEX/Contents/Info.plist" << PLIST
 <?xml version="1.0" encoding="UTF-8"?>
