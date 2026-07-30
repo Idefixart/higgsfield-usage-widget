@@ -72,13 +72,24 @@ public enum SharedStore {
     }
 
     public static func write(_ snapshot: CreditsSnapshot) {
-        try? FileManager.default.createDirectory(at: containerURL, withIntermediateDirectories: true)
-        guard let data = try? encoder.encode(snapshot) else { return }
-        try? data.write(to: snapshotURL, options: .atomic)
+        write(snapshot, to: snapshotURL)
     }
 
     public static func read() -> CreditsSnapshot? {
-        guard let data = try? Data(contentsOf: snapshotURL) else { return nil }
+        read(from: snapshotURL)
+    }
+
+    /// URL-taking variants exist so the disk path is testable without writing
+    /// into the real App Group container.
+    static func write(_ snapshot: CreditsSnapshot, to url: URL) {
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
+        guard let data = try? encoder.encode(snapshot) else { return }
+        try? data.write(to: url, options: .atomic)
+    }
+
+    static func read(from url: URL) -> CreditsSnapshot? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
         return try? decoder.decode(CreditsSnapshot.self, from: data)
     }
 }

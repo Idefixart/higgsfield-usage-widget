@@ -38,9 +38,11 @@ public enum Aggregation {
             spent[tx.displayName, default: 0] += abs(tx.credits)
             count[tx.displayName, default: 0] += 1
         }
+        // Ties break on name — dictionary iteration order is randomized per
+        // process, so without it equal-spend rows shuffle between launches.
         return spent
             .map { ModelStat(name: $0.key, creditsSpent: $0.value, generations: count[$0.key] ?? 0) }
-            .sorted { $0.creditsSpent > $1.creditsSpent }
+            .sorted { $0.creditsSpent == $1.creditsSpent ? $0.name < $1.name : $0.creditsSpent > $1.creditsSpent }
     }
 
     /// Bucket-averaged downsampling for the balance sparkline.

@@ -28,6 +28,16 @@ final class AggregationTests: XCTestCase {
         XCTAssertEqual(stats[1].generations, 2)
     }
 
+    func testBreakdownTiesBreakOnNameForDeterministicOrder() {
+        let txs = [
+            tx("Zulu", -10, daysAgo: 1),
+            tx("Alpha", -10, daysAgo: 1),
+            tx("Mike", -10, daysAgo: 1),
+        ]
+        let stats = Aggregation.modelBreakdown(txs, window: .all, now: now)
+        XCTAssertEqual(stats.map(\.name), ["Alpha", "Mike", "Zulu"])
+    }
+
     func testWindowFiltering() {
         let txs = [
             tx("A", -2, daysAgo: 1),

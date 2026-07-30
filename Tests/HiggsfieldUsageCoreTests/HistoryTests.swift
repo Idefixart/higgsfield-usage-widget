@@ -14,6 +14,23 @@ final class HistoryTests: XCTestCase {
         XCTAssertEqual(merged.map(\.displayName), ["C", "B", "A"])
     }
 
+    func testMergeSortsChronologicallyAcrossFractionWidths() {
+        // The API omits the fraction when microseconds are exactly zero, so a
+        // whole-second timestamp can be newer than a fractional one in the same
+        // second. Plain string compare gets this backwards ('Z' > '.').
+        let older = tx("older", -2, "2026-07-28T10:00:00.500000Z")
+        let newer = tx("newer", -2, "2026-07-28T10:00:01Z")
+        XCTAssertEqual(HistoryMerge.merge(existing: [older], new: [newer]).map(\.displayName),
+                       ["newer", "older"])
+    }
+
+    func testMergeSinksUnparsableDatesToBottom() {
+        let good = tx("good", -2, "2026-07-28T10:00:00Z")
+        let bad = tx("bad", -2, "garbage")
+        XCTAssertEqual(HistoryMerge.merge(existing: [bad], new: [good]).map(\.displayName),
+                       ["good", "bad"])
+    }
+
     func testMergeKeepsSameTimestampDifferentModel() {
         let a = tx("A", -2, "2026-07-28T10:00:00Z")
         let b = tx("B", -2, "2026-07-28T10:00:00Z")

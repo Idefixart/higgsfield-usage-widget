@@ -4,15 +4,24 @@ import Foundation
 
 public enum HistoryMerge {
     /// Merge a freshly fetched page into the stored history. Dedupe by
-    /// dedupeKey, newest first. ISO8601 UTC strings sort chronologically,
-    /// so plain string comparison is a correct sort key.
+    /// dedupeKey, newest first. Sorting uses the parsed date, not the raw
+    /// string: the API omits the fraction when microseconds are zero, and
+    /// "…:01Z" compares below "…:00.5Z" as plain text. Unparsable dates sink
+    /// to the bottom; exact ties break on the raw string so order is stable.
     public static func merge(existing: [Transaction], new: [Transaction]) -> [Transaction] {
         var seen = Set<String>()
         var out: [Transaction] = []
         for tx in existing + new where seen.insert(tx.dedupeKey).inserted {
             out.append(tx)
         }
-        return out.sorted { $0.createdAt > $1.createdAt }
+        return out.sorted { a, b in
+            switch (a.date, b.date) {
+            case let (x?, y?): return x == y ? a.createdAt > b.createdAt : x > y
+            case (_?, nil): return true
+            case (nil, _?): return false
+            case (nil, nil): return a.createdAt > b.createdAt
+            }
+        }
     }
 }
 
