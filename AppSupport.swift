@@ -1,0 +1,184 @@
+import AppKit
+import SwiftUI
+import ServiceManagement
+
+// MARK: - Login Item
+
+enum LoginItem {
+    static var isEnabled: Bool {
+        SMAppService.mainApp.status == .enabled
+    }
+    static func set(_ enabled: Bool) throws {
+        let svc = SMAppService.mainApp
+        if enabled {
+            if svc.status != .enabled { try svc.register() }
+        } else {
+            if svc.status == .enabled { try svc.unregister() }
+        }
+    }
+}
+
+// MARK: - Brand
+
+extension Color {
+    static let hfBlue = Color(red: 0 / 255, green: 194 / 255, blue: 255 / 255)  // #00C2FF
+}
+
+// MARK: - Localization
+
+enum Lang: String, CaseIterable, Identifiable {
+    case en, de
+    var id: String { rawValue }
+    var displayName: String {
+        switch self { case .en: return "English"; case .de: return "Deutsch" }
+    }
+    var localeIdentifier: String {
+        switch self { case .en: return "en_US"; case .de: return "de_DE" }
+    }
+}
+
+enum L10n {
+    static let strings: [String: [Lang: String]] = [
+        "app.name":                [.en: "Higgsfield Usage", .de: "Higgsfield Usage"],
+        "label.credits":           [.en: "Credits", .de: "Credits"],
+        "section.models":          [.en: "Model Spend", .de: "Model-Verbrauch"],
+        "section.recent":          [.en: "Recent", .de: "Zuletzt"],
+        "window.7d":               [.en: "7 days", .de: "7 Tage"],
+        "window.30d":              [.en: "30 days", .de: "30 Tage"],
+        "window.all":              [.en: "All", .de: "Alle"],
+        "label.updated":           [.en: "Updated: ", .de: "Aktualisiert: "],
+        "label.stale":             [.en: "As of: ", .de: "Stand: "],
+        "label.loading":           [.en: "Loading credits...", .de: "Lade Credits..."],
+        "label.no_data":           [.en: "No spend data yet", .de: "Noch keine Verbrauchsdaten"],
+        "action.refresh":          [.en: "Refresh", .de: "Aktualisieren"],
+        "action.settings":         [.en: "Settings...", .de: "Einstellungen..."],
+        "action.quit":             [.en: "Quit", .de: "Beenden"],
+        "settings.title":          [.en: "Settings", .de: "Einstellungen"],
+        "settings.window_title":   [.en: "Higgsfield Usage – Settings", .de: "Higgsfield Usage – Einstellungen"],
+        "settings.interval":       [.en: "Refresh Interval", .de: "Aktualisierungs-Intervall"],
+        "settings.min":            [.en: "min", .de: "Min"],
+        "settings.warn":           [.en: "Warn below", .de: "Warnung unter"],
+        "settings.warn_hint":      [.en: "Menu bar turns red when credits drop below this value", .de: "Menubar wird rot, wenn die Credits unter diesen Wert fallen"],
+        "settings.autostart":      [.en: "Launch at login", .de: "Beim Login automatisch starten"],
+        "settings.autostart_hint": [.en: "Higgsfield Usage opens at every system start", .de: "Higgsfield Usage öffnet sich bei jedem Systemstart"],
+        "settings.language":       [.en: "Language", .de: "Sprache"],
+        "settings.save":           [.en: "Save", .de: "Speichern"],
+        "settings.data_source":    [.en: "Data via higgsfield CLI", .de: "Daten via higgsfield CLI"],
+        "error.cli_missing":       [.en: "higgsfield CLI not found — brew install higgsfield", .de: "higgsfield CLI nicht gefunden — brew install higgsfield"],
+        "error.auth":              [.en: "Not logged in — run: higgsfield auth login", .de: "Nicht eingeloggt — führe aus: higgsfield auth login"],
+        "error.invalid_json":      [.en: "Invalid JSON from CLI", .de: "Ungültiges JSON vom CLI"],
+    ]
+
+    static func t(_ key: String, lang: Lang, _ args: CVarArg...) -> String {
+        let template = strings[key]?[lang] ?? strings[key]?[.en] ?? key
+        if args.isEmpty { return template }
+        return String(format: template, arguments: args)
+    }
+}
+
+// MARK: - Configuration
+
+struct AppConfig: Codable {
+    var refreshInterval: TimeInterval
+    var warnBelowCredits: Double
+    var language: String    // "en" | "de"
+    var statsWindow: String // StatsWindow rawValue
+
+    static let `default` = AppConfig(
+        refreshInterval: 120,
+        warnBelowCredits: 500,
+        language: "en",
+        statsWindow: "days7"
+    )
+
+    static var configDir: String {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        return "\(home)/.higgsfield-usage-widget"
+    }
+    static var configPath: String { "\(configDir)/config.json" }
+
+    static func load() -> AppConfig {
+        if let data = FileManager.default.contents(atPath: configPath),
+           let decoded = try? JSONDecoder().decode(AppConfig.self, from: data) {
+            return decoded
+        }
+        return .default
+    }
+
+    func save() {
+        try? FileManager.default.createDirectory(atPath: AppConfig.configDir, withIntermediateDirectories: true)
+        let enc = JSONEncoder()
+        enc.outputFormatting = .prettyPrinted
+        if let data = try? enc.encode(self) {
+            FileManager.default.createFile(atPath: AppConfig.configPath, contents: data)
+        }
+    }
+}
+
+// MARK: - CLI runner
+
+final class HiggsfieldCLI {
+    static let candidates = [
+        "/opt/homebrew/bin/higgsfield",
+        "/usr/local/bin/higgsfield",
+        "/usr/bin/higgsfield",
+    ]
+
+    static func find() -> String? {
+        candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
+    enum CLIError: LocalizedError {
+        case missing
+        case failed(String)
+        var errorDescription: String? {
+            switch self {
+            case .missing: return "error.cli_missing"
+            case .failed(let msg): return msg
+            }
+        }
+    }
+
+    /// Runs `higgsfield <args> --json --no-color` off the main thread.
+    /// Completion fires on a background queue — callers hop to main.
+    func run(_ args: [String], completion: @escaping (Result<Data, Error>) -> Void) {
+        guard let bin = Self.find() else {
+            completion(.failure(CLIError.missing))
+            return
+        }
+        DispatchQueue.global().async {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: bin)
+            p.arguments = args + ["--json", "--no-color"]
+            // The CLI is a `#!/usr/bin/env node` script, so node must be on
+            // PATH. A GUI app inherits launchd's PATH, which usually lacks the
+            // Homebrew prefix — prepend it rather than rely on the environment.
+            var env = ProcessInfo.processInfo.environment
+            let extra = "/opt/homebrew/bin:/usr/local/bin"
+            env["PATH"] = extra + ":" + (env["PATH"] ?? "/usr/bin:/bin")
+            p.environment = env
+            let out = Pipe()
+            let err = Pipe()
+            p.standardOutput = out
+            p.standardError = err
+            do {
+                try p.run()
+            } catch {
+                completion(.failure(error))
+                return
+            }
+            // Read to EOF BEFORE waitUntilExit — the reverse order can deadlock
+            // once output exceeds the 64 KB pipe buffer.
+            let data = out.fileHandleForReading.readDataToEndOfFile()
+            let errData = err.fileHandleForReading.readDataToEndOfFile()
+            p.waitUntilExit()
+            if p.terminationStatus != 0 {
+                let msg = String(data: errData, encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                completion(.failure(CLIError.failed(msg.isEmpty ? "error.auth" : msg)))
+                return
+            }
+            completion(.success(data))
+        }
+    }
+}
