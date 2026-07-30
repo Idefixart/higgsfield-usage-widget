@@ -200,7 +200,7 @@ final class HiggsfieldCLI {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: bin)
         p.arguments = ["auth", "login", "--no-color"]
-        p.environment = Self.pathEnvironment()
+        p.environment = Self.environment()
         let err = Pipe()
         p.standardOutput = Pipe()
         p.standardError = err
@@ -237,14 +237,44 @@ final class HiggsfieldCLI {
         loginProcess = nil
     }
 
+    /// The CLI derives its credential path from `$HOME` (`~/.config/higgsfield`).
+    /// Sharing that with the terminal means both sides rotate the same refresh
+    /// token: whoever refreshes second is rejected, and the CLI then deletes
+    /// credentials.json outright. That is why running `higgsfield` in a shell
+    /// signed the widget out, and vice versa. Giving the app its own HOME gives
+    /// it its own session, so the two no longer collide.
+    static var cliHome: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library/Application Support", isDirectory: true)
+        return base.appendingPathComponent("HiggsfieldUsage/cli-home", isDirectory: true)
+    }
+
     /// The CLI is a `#!/usr/bin/env node` script, so node must be on PATH. A
     /// GUI app inherits launchd's PATH, which usually lacks the Homebrew
     /// prefix — prepend it rather than rely on the environment.
-    private static func pathEnvironment() -> [String: String] {
+    private static func environment() -> [String: String] {
         var env = ProcessInfo.processInfo.environment
         let extra = "/opt/homebrew/bin:/usr/local/bin"
         env["PATH"] = extra + ":" + (env["PATH"] ?? "/usr/bin:/bin")
+        prepareCLIHome()
+        env["HOME"] = cliHome.path
         return env
+    }
+
+    /// Creates the private CLI home and seeds it with the workspace selection
+    /// from the user's real config — credentials stay separate on purpose, but
+    /// a different workspace would report different credits.
+    private static func prepareCLIHome() {
+        let fm = FileManager.default
+        let configDir = cliHome.appendingPathComponent(".config/higgsfield", isDirectory: true)
+        try? fm.createDirectory(at: configDir, withIntermediateDirectories: true)
+
+        let ours = configDir.appendingPathComponent("config.json")
+        guard !fm.fileExists(atPath: ours.path) else { return }
+        let theirs = fm.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/higgsfield/config.json")
+        try? fm.copyItem(at: theirs, to: ours)
     }
 
     /// Runs `higgsfield <args> --json --no-color` off the main thread.
@@ -258,7 +288,7 @@ final class HiggsfieldCLI {
             let p = Process()
             p.executableURL = URL(fileURLWithPath: bin)
             p.arguments = args + ["--json", "--no-color"]
-            p.environment = Self.pathEnvironment()
+            p.environment = Self.environment()
             let out = Pipe()
             let err = Pipe()
             p.standardOutput = out
