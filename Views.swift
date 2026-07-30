@@ -59,7 +59,7 @@ struct SparklineView: View {
                         else { p.addLine(to: CGPoint(x: x, y: y)) }
                     }
                 }
-                .stroke(Color.hfBlue, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+                .stroke(Color.hfLime, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
             }
         }
         .frame(height: 36)
@@ -85,7 +85,7 @@ struct ModelStatRow: View {
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.primary.opacity(0.08))
                     Capsule()
-                        .fill(LinearGradient(colors: [Color.hfBlue.opacity(0.55), .hfBlue],
+                        .fill(LinearGradient(colors: [Color.hfLimeSolid.opacity(0.55), .hfLime],
                                              startPoint: .leading, endPoint: .trailing))
                         .frame(width: max(3, geo.size.width * CGFloat(maxCredits > 0 ? stat.creditsSpent / maxCredits : 0)))
                 }
@@ -129,7 +129,7 @@ struct AuthCard: View {
             HStack(spacing: 8) {
                 Image(systemName: "person.badge.key.fill")
                     .font(.system(size: 13))
-                    .foregroundColor(.hfBlue)
+                    .foregroundColor(.hfLime)
                 Text(store.t("auth.title"))
                     .font(.system(size: 13, weight: .semibold))
             }
@@ -159,7 +159,7 @@ struct AuthCard: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.hfBlue.opacity(0.07))
+        .background(Color.hfLimeSolid.opacity(0.07))
         .cornerRadius(8)
     }
 }
@@ -177,7 +177,7 @@ struct ContentView: View {
             HStack(spacing: 8) {
                 Image(systemName: "bolt.fill")
                     .font(.system(size: 15))
-                    .foregroundColor(.hfBlue)
+                    .foregroundColor(.hfLime)
                 Text(store.t("app.name"))
                     .font(.system(size: 15, weight: .semibold))
                 Spacer()
@@ -226,7 +226,7 @@ struct ContentView: View {
                             .foregroundColor(.secondary)
                         Text(fmtCredits(credits))
                             .font(.system(size: 32, weight: .bold, design: .rounded))
-                            .foregroundColor(store.isLow ? .red : .hfBlue)
+                            .foregroundColor(store.isLow ? .red : .hfLime)
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 3) {
@@ -235,8 +235,8 @@ struct ContentView: View {
                                 .font(.system(size: 10, weight: .semibold))
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 3)
-                                .background(Color.hfBlue.opacity(0.12))
-                                .foregroundColor(.hfBlue)
+                                .background(Color.hfLimeSolid.opacity(0.12))
+                                .foregroundColor(.hfLime)
                                 .clipShape(Capsule())
                         }
                         if !store.email.isEmpty {
@@ -248,7 +248,7 @@ struct ContentView: View {
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity)
-                .background(Color.hfBlue.opacity(0.05))
+                .background(Color.hfLimeSolid.opacity(0.05))
                 .cornerRadius(8)
 
                 if store.sparkValues.count > 1 {

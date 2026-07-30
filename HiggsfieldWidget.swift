@@ -1,8 +1,18 @@
 import WidgetKit
 import SwiftUI
+import AppKit
 
 private extension Color {
-    static let hfBlue = Color(red: 0 / 255, green: 194 / 255, blue: 255 / 255)  // #00C2FF
+    /// Higgsfield brand lime (`--color-lime`). Darkened in light mode, where
+    /// the neon original is unreadable as text. Mirrors the app's definition —
+    /// the widget links only the Foundation-only core, not the app sources.
+    static let hfLime = Color(nsColor: NSColor(name: "hfLime") { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor(srgbRed: 209 / 255, green: 254 / 255, blue: 23 / 255, alpha: 1)   // #D1FE17
+            : NSColor(srgbRed: 104 / 255, green: 133 / 255, blue: 0 / 255, alpha: 1)    // #688500
+    })
+
+    static let hfLimeSolid = Color(red: 209 / 255, green: 254 / 255, blue: 23 / 255)
 }
 
 private func fmt(_ v: Double) -> String {
@@ -42,7 +52,7 @@ private struct Header: View {
         HStack(spacing: 5) {
             Image(systemName: "bolt.fill")
                 .font(.system(size: 11))
-                .foregroundColor(.hfBlue)
+                .foregroundColor(.hfLime)
             Text("Higgsfield")
                 .font(.system(size: 12, weight: .semibold))
             Spacer()
@@ -51,7 +61,7 @@ private struct Header: View {
 }
 
 private func creditsColor(_ snap: CreditsSnapshot) -> Color {
-    snap.credits < snap.warnBelow ? .red : .hfBlue
+    snap.credits < snap.warnBelow ? .red : .hfLime
 }
 
 private struct ModelMini: View {
@@ -73,7 +83,7 @@ private struct ModelMini: View {
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.primary.opacity(0.10))
                     Capsule()
-                        .fill(LinearGradient(colors: [Color.hfBlue.opacity(0.65), .hfBlue],
+                        .fill(LinearGradient(colors: [Color.hfLimeSolid.opacity(0.65), .hfLime],
                                              startPoint: .leading, endPoint: .trailing))
                         .frame(width: max(3, geo.size.width * CGFloat(maxCredits > 0 ? model.credits / maxCredits : 0)))
                 }
@@ -104,7 +114,7 @@ private struct SmallView: View {
             if !snapshot.plan.isEmpty {
                 Text(snapshot.plan.capitalized)
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.hfBlue)
+                    .foregroundColor(.hfLime)
             }
         }
     }
@@ -132,7 +142,7 @@ private struct MediumView: View {
                 if !snapshot.plan.isEmpty {
                     Text(snapshot.plan.capitalized)
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.hfBlue)
+                        .foregroundColor(.hfLime)
                 }
             }
             .frame(width: 118, alignment: .leading)

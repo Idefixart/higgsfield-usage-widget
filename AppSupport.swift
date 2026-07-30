@@ -21,7 +21,18 @@ enum LoginItem {
 // MARK: - Brand
 
 extension Color {
-    static let hfBlue = Color(red: 0 / 255, green: 194 / 255, blue: 255 / 255)  // #00C2FF
+    /// Higgsfield brand lime, taken from their design tokens (`--color-lime`).
+    /// Neon on dark, but ~1.3:1 against white — as text in a light-mode
+    /// popover it would be unreadable, so that variant is darkened.
+    static let hfLime = Color(nsColor: NSColor(name: "hfLime") { appearance in
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            ? NSColor(srgbRed: 209 / 255, green: 254 / 255, blue: 23 / 255, alpha: 1)   // #D1FE17
+            : NSColor(srgbRed: 104 / 255, green: 133 / 255, blue: 0 / 255, alpha: 1)    // #688500
+    })
+
+    /// Unmodified brand lime, for fills and bars where the shape carries the
+    /// contrast instead of thin glyph strokes.
+    static let hfLimeSolid = Color(red: 209 / 255, green: 254 / 255, blue: 23 / 255)
 }
 
 // MARK: - Localization
