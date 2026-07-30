@@ -15,6 +15,7 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
     var refreshTimer: Timer?
     var cancellables = Set<AnyCancellable>()
     var outsideClickMonitor: Any?
+    var didCancelSignIn = false
 
     init(store: CreditsStore, config: AppConfig) {
         self.store = store
@@ -90,6 +91,40 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         }
     }
 
+    /// Owning the OAuth process here is the whole point: run from a terminal,
+    /// `auth login` dies with the terminal before the callback lands and the
+    /// token is never written.
+    func signIn() {
+        guard !store.isSigningIn else { return }
+        store.isSigningIn = true
+        cli.login { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.store.isSigningIn = false
+                switch result {
+                case .success:
+                    self.refresh()
+                case .failure(let error):
+                    // Cancelling terminates the process, which reports failure
+                    // — not worth an error box. Real failures still surface,
+                    // alongside the sign-in card so the user can retry.
+                    if self.didCancelSignIn {
+                        self.didCancelSignIn = false
+                    } else {
+                        let raw = error.localizedDescription
+                        self.store.errorMessage = L10n.strings[raw] != nil ? self.store.t(raw) : raw
+                    }
+                }
+            }
+        }
+    }
+
+    func cancelSignIn() {
+        didCancelSignIn = true
+        cli.cancelLogin()
+        store.isSigningIn = false
+    }
+
     func showSettings() {
         popover.performClose(nil)
         if settingsController == nil {
@@ -113,7 +148,9 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             store: store,
             onRefresh: { [weak self] in self?.refresh() },
             onSettings: { [weak self] in self?.showSettings() },
-            onQuit: { NSApp.terminate(nil) }
+            onQuit: { NSApp.terminate(nil) },
+            onSignIn: { [weak self] in self?.signIn() },
+            onCancelSignIn: { [weak self] in self?.cancelSignIn() }
         ))
         // Make NSPopover size to SwiftUI intrinsic, else top clips
         hosting.sizingOptions = [.preferredContentSize]

@@ -67,6 +67,12 @@ enum L10n {
         "error.cli_missing":       [.en: "higgsfield CLI not found — brew install higgsfield", .de: "higgsfield CLI nicht gefunden — brew install higgsfield"],
         "error.auth":              [.en: "Not logged in — run: higgsfield auth login", .de: "Nicht eingeloggt — führe aus: higgsfield auth login"],
         "error.invalid_json":      [.en: "Invalid JSON from CLI", .de: "Ungültiges JSON vom CLI"],
+        "error.login_failed":      [.en: "Sign-in did not complete", .de: "Anmeldung nicht abgeschlossen"],
+        "auth.title":              [.en: "Not signed in", .de: "Nicht angemeldet"],
+        "auth.body":               [.en: "Higgsfield Usage needs access to your Higgsfield account.", .de: "Higgsfield Usage braucht Zugriff auf dein Higgsfield-Konto."],
+        "auth.button":             [.en: "Sign in to Higgsfield", .de: "Bei Higgsfield anmelden"],
+        "auth.waiting":            [.en: "Waiting for browser — finish sign-in there, then this updates on its own.", .de: "Warte auf den Browser — schließe die Anmeldung dort ab, danach aktualisiert sich das hier von selbst."],
+        "auth.cancel":             [.en: "Cancel", .de: "Abbrechen"],
     ]
 
     static func t(_ key: String, lang: Lang, _ args: CVarArg...) -> String {
@@ -139,6 +145,74 @@ final class HiggsfieldCLI {
         }
     }
 
+    /// `auth login` opens a browser and blocks until the OAuth loopback
+    /// callback arrives. Run from a terminal, closing that terminal sends
+    /// SIGHUP and the token is never written — which is exactly how the
+    /// credentials file ends up missing. Owning the process here avoids that:
+    /// the app outlives the browser round-trip.
+    private var loginProcess: Process?
+    var isLoggingIn: Bool { loginProcess?.isRunning ?? false }
+
+    /// Fails the login after this long so a closed browser tab cannot leave
+    /// the UI spinning forever.
+    static let loginTimeout: TimeInterval = 300
+
+    func login(completion: @escaping (Result<Void, Error>) -> Void) {
+        guard !isLoggingIn else { return }
+        guard let bin = Self.find() else {
+            completion(.failure(CLIError.missing))
+            return
+        }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: bin)
+        p.arguments = ["auth", "login", "--no-color"]
+        p.environment = Self.pathEnvironment()
+        let err = Pipe()
+        p.standardOutput = Pipe()
+        p.standardError = err
+        do {
+            try p.run()
+        } catch {
+            completion(.failure(error))
+            return
+        }
+        loginProcess = p
+
+        let deadline = DispatchTime.now() + Self.loginTimeout
+        DispatchQueue.global().asyncAfter(deadline: deadline) { [weak p] in
+            guard let p, p.isRunning else { return }
+            p.terminate()
+        }
+
+        DispatchQueue.global().async { [weak self] in
+            let errData = err.fileHandleForReading.readDataToEndOfFile()
+            p.waitUntilExit()
+            self?.loginProcess = nil
+            if p.terminationStatus == 0 {
+                completion(.success(()))
+                return
+            }
+            let msg = String(data: errData, encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            completion(.failure(CLIError.failed(msg.isEmpty ? "error.login_failed" : msg)))
+        }
+    }
+
+    func cancelLogin() {
+        loginProcess?.terminate()
+        loginProcess = nil
+    }
+
+    /// The CLI is a `#!/usr/bin/env node` script, so node must be on PATH. A
+    /// GUI app inherits launchd's PATH, which usually lacks the Homebrew
+    /// prefix — prepend it rather than rely on the environment.
+    private static func pathEnvironment() -> [String: String] {
+        var env = ProcessInfo.processInfo.environment
+        let extra = "/opt/homebrew/bin:/usr/local/bin"
+        env["PATH"] = extra + ":" + (env["PATH"] ?? "/usr/bin:/bin")
+        return env
+    }
+
     /// Runs `higgsfield <args> --json --no-color` off the main thread.
     /// Completion fires on a background queue — callers hop to main.
     func run(_ args: [String], completion: @escaping (Result<Data, Error>) -> Void) {
@@ -150,13 +224,7 @@ final class HiggsfieldCLI {
             let p = Process()
             p.executableURL = URL(fileURLWithPath: bin)
             p.arguments = args + ["--json", "--no-color"]
-            // The CLI is a `#!/usr/bin/env node` script, so node must be on
-            // PATH. A GUI app inherits launchd's PATH, which usually lacks the
-            // Homebrew prefix — prepend it rather than rely on the environment.
-            var env = ProcessInfo.processInfo.environment
-            let extra = "/opt/homebrew/bin:/usr/local/bin"
-            env["PATH"] = extra + ":" + (env["PATH"] ?? "/usr/bin:/bin")
-            p.environment = env
+            p.environment = Self.pathEnvironment()
             let out = Pipe()
             let err = Pipe()
             p.standardOutput = out

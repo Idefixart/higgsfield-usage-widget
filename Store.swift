@@ -14,6 +14,8 @@ final class CreditsStore: ObservableObject {
     @Published var breakdownStale = false
     @Published var isLoading = false
     @Published var errorMessage: String?
+    @Published var needsAuth = false
+    @Published var isSigningIn = false
     @Published var language: Lang = .en
 
     var config = AppConfig.load() {
@@ -72,6 +74,7 @@ final class CreditsStore: ObservableObject {
         lastUpdated = Date()
         isStale = false
         errorMessage = nil
+        needsAuth = false
         let pts = BalanceHistory.appendPrune(
             balancePoints,
             adding: BalancePoint(timestamp: Date(), credits: status.credits))
@@ -89,7 +92,10 @@ final class CreditsStore: ObservableObject {
         isLoading = false
         isStale = true
         let msg = L10n.strings[message] != nil ? t(message) : message
-        errorMessage = msg
+        // An auth failure is recoverable in-app via the sign-in button, so it
+        // gets its own UI state instead of the generic error box.
+        needsAuth = AuthState.isAuthFailure(message)
+        errorMessage = needsAuth ? nil : msg
         publishSnapshot(error: msg)
     }
 

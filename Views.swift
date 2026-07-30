@@ -117,10 +117,59 @@ struct TransactionRow: View {
     }
 }
 
+// MARK: - Sign-in
+
+struct AuthCard: View {
+    @ObservedObject var store: CreditsStore
+    let onSignIn: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "person.badge.key.fill")
+                    .font(.system(size: 13))
+                    .foregroundColor(.hfBlue)
+                Text(store.t("auth.title"))
+                    .font(.system(size: 13, weight: .semibold))
+            }
+            Text(store.isSigningIn ? store.t("auth.waiting") : store.t("auth.body"))
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if store.isSigningIn {
+                HStack(spacing: 8) {
+                    ProgressView().scaleEffect(0.5).frame(width: 14, height: 14)
+                    Button(store.t("auth.cancel"), action: onCancel)
+                        .buttonStyle(.link)
+                        .font(.system(size: 12))
+                }
+            } else {
+                Button(action: onSignIn) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.up.forward.app.fill")
+                        Text(store.t("auth.button"))
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.hfBlue.opacity(0.07))
+        .cornerRadius(8)
+    }
+}
+
 // MARK: - Popover content
 
 struct ContentView: View {
     @ObservedObject var store: CreditsStore
+    let onSignIn: () -> Void
+    let onCancelSignIn: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -135,6 +184,10 @@ struct ContentView: View {
                 if store.isLoading {
                     ProgressView().scaleEffect(0.5).frame(width: 14, height: 14)
                 }
+            }
+
+            if store.needsAuth {
+                AuthCard(store: store, onSignIn: onSignIn, onCancel: onCancelSignIn)
             }
 
             if let error = store.errorMessage {
@@ -152,7 +205,7 @@ struct ContentView: View {
                 .cornerRadius(8)
             }
 
-            if store.credits == nil && store.errorMessage == nil {
+            if store.credits == nil && store.errorMessage == nil && !store.needsAuth {
                 HStack {
                     Spacer()
                     VStack(spacing: 8) {
@@ -259,10 +312,12 @@ struct PopoverView: View {
     let onRefresh: () -> Void
     let onSettings: () -> Void
     let onQuit: () -> Void
+    let onSignIn: () -> Void
+    let onCancelSignIn: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
-            ContentView(store: store)
+            ContentView(store: store, onSignIn: onSignIn, onCancelSignIn: onCancelSignIn)
             Divider().padding(.horizontal, 14)
             VStack(spacing: 2) {
                 popButton(icon: "arrow.clockwise", label: store.t("action.refresh"), action: onRefresh)
