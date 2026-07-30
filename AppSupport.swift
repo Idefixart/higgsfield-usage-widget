@@ -83,6 +83,7 @@ enum L10n {
         "label.stale":             [.en: "As of: ", .de: "Stand: "],
         "label.loading":           [.en: "Loading credits...", .de: "Lade Credits..."],
         "label.no_data":           [.en: "No spend data yet", .de: "Noch keine Verbrauchsdaten"],
+        "label.coverage":          [.en: "History starts %@ — shorter than this window", .de: "Verlauf beginnt %@ — kürzer als dieser Zeitraum"],
         "action.refresh":          [.en: "Refresh", .de: "Aktualisieren"],
         "action.settings":         [.en: "Settings...", .de: "Einstellungen..."],
         "action.quit":             [.en: "Quit", .de: "Beenden"],

@@ -285,6 +285,13 @@ struct ContentView: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
 
+                if let note = store.coverageNote {
+                    Text(note)
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary.opacity(0.6))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
                 let stats = store.breakdown
                 if stats.isEmpty {
                     Text(store.t("label.no_data"))

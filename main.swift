@@ -76,21 +76,60 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         }
     }
 
+    /// Page size is capped at 100 by the API. A busy day can fill that in
+    /// hours, which makes the 7d/30d/All windows collapse onto identical
+    /// numbers — so walk the cursor until the history is deep enough to make
+    /// the widest window meaningful.
+    static let pageSize = 100
+    static let targetHistoryDays: Double = 35
+    static let maxPages = 12
+
     private func fetchTransactions() {
-        cli.run(["account", "transactions", "--size", "100"]) { [weak self] result in
+        fetchTransactionPage(offset: 0, page: 1, collected: [])
+    }
+
+    /// `--cursor` is a row offset, not an id or timestamp — the CLI parses it
+    /// with ParseInt and the API skips that many rows.
+    private func fetchTransactionPage(offset: Int, page: Int, collected: [Transaction]) {
+        var args = ["account", "transactions", "--size", "\(Self.pageSize)"]
+        if offset > 0 { args += ["--cursor", "\(offset)"] }
+
+        cli.run(args) { [weak self] result in
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.store.isLoading = false
-                if case .success(let data) = result,
-                   let txs = try? APIDecode.transactions(from: data) {
-                    self.store.apply(newTransactions: txs)
-                    self.store.breakdownStale = false
-                } else {
-                    self.store.breakdownStale = true
+                guard case .success(let data) = result,
+                      let page1 = try? APIDecode.transactions(from: data) else {
+                    // A failed first page means no fresh breakdown at all; a
+                    // failed later page just means less depth than hoped.
+                    self.finishTransactions(collected, stale: collected.isEmpty)
+                    return
                 }
-                self.store.publishSnapshot()
+
+                let merged = HistoryMerge.merge(existing: collected, new: page1)
+                // Stop on a short page (end of history), on a page that added
+                // nothing new (guards against an offset the API ignores, which
+                // would otherwise loop forever), once the history is deep
+                // enough, or at the page ceiling.
+                let gainedRows = merged.count > collected.count
+                let deepEnough = (Aggregation.coverage(merged)?.days ?? 0) >= Self.targetHistoryDays
+                guard page1.count == Self.pageSize,
+                      gainedRows,
+                      !deepEnough,
+                      page < Self.maxPages
+                else {
+                    self.finishTransactions(merged, stale: false)
+                    return
+                }
+                self.fetchTransactionPage(offset: offset + page1.count, page: page + 1, collected: merged)
             }
         }
+    }
+
+    private func finishTransactions(_ txs: [Transaction], stale: Bool) {
+        store.isLoading = false
+        if !txs.isEmpty { store.apply(newTransactions: txs) }
+        store.breakdownStale = stale
+        store.publishSnapshot()
     }
 
     /// Owning the OAuth process here is the whole point: run from a terminal,

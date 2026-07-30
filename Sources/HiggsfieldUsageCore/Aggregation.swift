@@ -24,7 +24,28 @@ public struct ModelStat: Equatable, Identifiable {
     }
 }
 
+/// How far back the stored history actually reaches. Without this the window
+/// picker looks broken: with only a day of data, 7d/30d/All are identical
+/// numbers and nothing explains why.
+public struct Coverage: Equatable {
+    public let oldest: Date
+    public let days: Double
+
+    /// True when the window asks for more history than we hold, i.e. the
+    /// figures shown are the same as the next window down.
+    public func isTruncated(for window: StatsWindow) -> Bool {
+        guard let want = window.days else { return true }
+        return days < want
+    }
+}
+
 public enum Aggregation {
+    public static func coverage(_ txs: [Transaction], now: Date = Date()) -> Coverage? {
+        let dates = txs.filter { $0.action == "spend" }.compactMap(\.date)
+        guard let oldest = dates.min() else { return nil }
+        return Coverage(oldest: oldest, days: max(0, now.timeIntervalSince(oldest) / 86400))
+    }
+
     /// Per-model spend over a window. Only "spend" transactions count; one
     /// spend transaction == one generation. Sorted by credits spent, desc.
     public static func modelBreakdown(_ txs: [Transaction], window: StatsWindow, now: Date = Date()) -> [ModelStat] {

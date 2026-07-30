@@ -38,6 +38,33 @@ final class AggregationTests: XCTestCase {
         XCTAssertEqual(stats.map(\.name), ["Alpha", "Mike", "Zulu"])
     }
 
+    func testCoverageReportsOldestSpendAndSpan() {
+        let txs = [
+            tx("A", -2, daysAgo: 0.5),
+            tx("A", -2, daysAgo: 3),
+            tx("Top Up", 500, daysAgo: 40, action: "refill"),  // refills don't count
+        ]
+        let c = Aggregation.coverage(txs, now: now)
+        XCTAssertEqual(c?.days ?? 0, 3, accuracy: 0.01)
+    }
+
+    func testCoverageNilWithoutSpend() {
+        XCTAssertNil(Aggregation.coverage([], now: now))
+        XCTAssertNil(Aggregation.coverage([tx("T", 500, daysAgo: 1, action: "refill")], now: now))
+    }
+
+    func testCoverageTruncationPerWindow() {
+        let c = Coverage(oldest: now.addingTimeInterval(-3 * 86400), days: 3)
+        XCTAssertTrue(c.isTruncated(for: .days7))  // 3 days of history < 7d window
+        XCTAssertTrue(c.isTruncated(for: .days30))
+        XCTAssertTrue(c.isTruncated(for: .all))
+
+        let deep = Coverage(oldest: now.addingTimeInterval(-40 * 86400), days: 40)
+        XCTAssertFalse(deep.isTruncated(for: .days7))
+        XCTAssertFalse(deep.isTruncated(for: .days30))
+        XCTAssertTrue(deep.isTruncated(for: .all))
+    }
+
     func testWindowFiltering() {
         let txs = [
             tx("A", -2, daysAgo: 1),

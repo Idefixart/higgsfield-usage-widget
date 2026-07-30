@@ -37,6 +37,16 @@ final class CreditsStore: ObservableObject {
     var sparkValues: [Double] {
         Aggregation.sparkline(balancePoints)
     }
+
+    /// Shown when the selected window reaches further back than the data does,
+    /// which is why 7d/30d/All can read identically on a fresh install.
+    var coverageNote: String? {
+        guard let c = Aggregation.coverage(transactions), c.isTruncated(for: window) else { return nil }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: language.localeIdentifier)
+        f.dateFormat = c.days < 1 ? "HH:mm" : "d. MMM"
+        return t("label.coverage", f.string(from: c.oldest))
+    }
     var menuBarTitle: String {
         guard let c = credits else { return " –" }
         return " \(Int(c.rounded()))"
