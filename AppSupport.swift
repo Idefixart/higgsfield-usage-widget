@@ -150,6 +150,13 @@ final class HiggsfieldCLI {
             let p = Process()
             p.executableURL = URL(fileURLWithPath: bin)
             p.arguments = args + ["--json", "--no-color"]
+            // The CLI is a `#!/usr/bin/env node` script, so node must be on
+            // PATH. A GUI app inherits launchd's PATH, which usually lacks the
+            // Homebrew prefix — prepend it rather than rely on the environment.
+            var env = ProcessInfo.processInfo.environment
+            let extra = "/opt/homebrew/bin:/usr/local/bin"
+            env["PATH"] = extra + ":" + (env["PATH"] ?? "/usr/bin:/bin")
+            p.environment = env
             let out = Pipe()
             let err = Pipe()
             p.standardOutput = out
