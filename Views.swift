@@ -186,12 +186,158 @@ struct AuthCard: View {
     }
 }
 
+// MARK: - CLI install
+
+/// A shell command the user has to run themselves, with one-tap copying so it
+/// never has to be retyped.
+struct CommandRow: View {
+    @ObservedObject var store: CreditsStore
+    let command: String
+    @State private var copied = false
+
+    var body: some View {
+        // The command wraps rather than truncating: a half-shown command is
+        // useless to anyone who would rather retype it than trust the button.
+        VStack(alignment: .leading, spacing: 6) {
+            Text(command)
+                .font(.system(size: 11, design: .monospaced))
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(action: copy) {
+                HStack(spacing: 4) {
+                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                    Text(store.t(copied ? "cli.copied" : "cli.copy"))
+                }
+                .font(.system(size: 11))
+            }
+            .buttonStyle(.link)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.06))
+        .cornerRadius(6)
+    }
+
+    private func copy() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(command, forType: .string)
+        copied = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
+    }
+}
+
+/// Turns "higgsfield CLI not found" from a dead end into a single button. Shown
+/// only while the CLI is missing — a successful install refreshes, which clears
+/// `needsCLI` and takes the card with it.
+struct CLIInstallCard: View {
+    @ObservedObject var store: CreditsStore
+    let onInstall: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: isNodeMissing ? "shippingbox.fill" : "arrow.down.circle.fill")
+                    .font(.system(size: 13))
+                    .foregroundColor(.hfLime)
+                Text(store.t(isNodeMissing ? "cli.node_title" : "cli.title"))
+                    .font(.system(size: 13, weight: .semibold))
+            }
+
+            Text(bodyText)
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            switch store.cliIssue {
+            case .nodeMissing:
+                Button(action: openNodeSite) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.up.forward.app.fill")
+                        Text(store.t("cli.node_button"))
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+
+                Text(store.t("cli.node_brew"))
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                CommandRow(store: store, command: CLIInstall.brewNodeCommand)
+
+            case .needsPrivileges:
+                CommandRow(store: store, command: CLIInstall.sudoCommand)
+                retryButton
+
+            case .offline, .other:
+                retryButton
+
+            case nil:
+                if store.isInstallingCLI {
+                    HStack(spacing: 8) {
+                        ProgressView().scaleEffect(0.5).frame(width: 14, height: 14)
+                    }
+                } else {
+                    Button(action: onInstall) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.down.circle.fill")
+                            Text(store.t("cli.button"))
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.hfLimeSolid.opacity(0.07))
+        .cornerRadius(8)
+    }
+
+    private var isNodeMissing: Bool { store.cliIssue == .nodeMissing }
+
+    private var bodyText: String {
+        if store.isInstallingCLI { return store.t("cli.installing") }
+        switch store.cliIssue {
+        case .nodeMissing:      return store.t("cli.node_body")
+        case .needsPrivileges:  return store.t("cli.privileges")
+        case .offline:          return store.t("cli.offline")
+        case .other(let msg):   return store.t("cli.failed", msg)
+        case nil:               return store.t("cli.body")
+        }
+    }
+
+    private var retryButton: some View {
+        Button(action: onInstall) {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.clockwise")
+                Text(store.t("cli.retry"))
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .disabled(store.isInstallingCLI)
+    }
+
+    private func openNodeSite() {
+        guard let url = URL(string: CLIInstall.nodeDownloadURL) else { return }
+        NSWorkspace.shared.open(url)
+    }
+}
+
 // MARK: - Popover content
 
 struct ContentView: View {
     @ObservedObject var store: CreditsStore
     let onSignIn: () -> Void
     let onCancelSignIn: () -> Void
+    let onInstallCLI: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -204,6 +350,10 @@ struct ContentView: View {
                 if store.isLoading {
                     ProgressView().scaleEffect(0.5).frame(width: 14, height: 14)
                 }
+            }
+
+            if store.needsCLI {
+                CLIInstallCard(store: store, onInstall: onInstallCLI)
             }
 
             if store.needsAuth {
@@ -225,7 +375,7 @@ struct ContentView: View {
                 .cornerRadius(8)
             }
 
-            if store.credits == nil && store.errorMessage == nil && !store.needsAuth {
+            if store.credits == nil && store.errorMessage == nil && !store.needsAuth && !store.needsCLI {
                 HStack {
                     Spacer()
                     VStack(spacing: 8) {
@@ -341,10 +491,14 @@ struct PopoverView: View {
     let onQuit: () -> Void
     let onSignIn: () -> Void
     let onCancelSignIn: () -> Void
+    let onInstallCLI: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
-            ContentView(store: store, onSignIn: onSignIn, onCancelSignIn: onCancelSignIn)
+            ContentView(store: store,
+                        onSignIn: onSignIn,
+                        onCancelSignIn: onCancelSignIn,
+                        onInstallCLI: onInstallCLI)
             Divider().padding(.horizontal, 14)
             VStack(spacing: 2) {
                 popButton(icon: "arrow.clockwise", label: store.t("action.refresh"), action: onRefresh)

@@ -10,11 +10,20 @@ Data comes from the official `higgsfield` CLI (`higgsfield account status`,
 ## Requirements
 
 - macOS 14 (Sonoma) or newer, Apple Silicon
-- The `higgsfield` CLI on your PATH: `npm i -g @higgsfield/cli`
+- Node.js — the CLI ships as an npm package
 
-You do **not** need to be signed in on the command line. The app keeps its own
-session (see [Why it has its own login](#why-it-has-its-own-login)) — click
-**Sign in to Higgsfield** in the popover on first launch.
+You do **not** need to install the `higgsfield` CLI yourself. If it is missing,
+the popover shows an **Install higgsfield CLI** button that runs
+`npm install -g @higgsfield/cli` for you and disappears once it worked. Only if
+Node.js itself is absent does the card send you to nodejs.org first.
+
+The app finds the CLI wherever npm put it — Homebrew, the official Node
+installer, a custom `npm prefix`, nvm, fnm or Volta — so a working `higgsfield`
+in your terminal is enough.
+
+You do **not** need to be signed in on the command line either. The app keeps
+its own session (see [Why it has its own login](#why-it-has-its-own-login)) —
+click **Sign in to Higgsfield** in the popover on first launch.
 
 ## Install
 

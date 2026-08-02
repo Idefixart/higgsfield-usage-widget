@@ -16,7 +16,19 @@ final class CreditsStore: ObservableObject {
     @Published var errorMessage: String?
     @Published var needsAuth = false
     @Published var isSigningIn = false
+    @Published var needsCLI = false
+    @Published var isInstallingCLI = false
+    @Published var cliIssue: CLIIssue?
     @Published var language: Lang = .en
+
+    /// A failed install attempt, in the shape the card renders. Separate from
+    /// `errorMessage` because each case has its own remedy, not just text.
+    enum CLIIssue: Equatable {
+        case nodeMissing
+        case needsPrivileges
+        case offline
+        case other(String)
+    }
 
     var config = AppConfig.load() {
         didSet { language = Lang(rawValue: config.language) ?? .en }
@@ -85,6 +97,8 @@ final class CreditsStore: ObservableObject {
         isStale = false
         errorMessage = nil
         needsAuth = false
+        needsCLI = false
+        cliIssue = nil
         let pts = BalanceHistory.appendPrune(
             balancePoints,
             adding: BalancePoint(timestamp: Date(), credits: status.credits))
@@ -102,10 +116,12 @@ final class CreditsStore: ObservableObject {
         isLoading = false
         isStale = true
         let msg = L10n.strings[message] != nil ? t(message) : message
-        // An auth failure is recoverable in-app via the sign-in button, so it
-        // gets its own UI state instead of the generic error box.
-        needsAuth = AuthState.isAuthFailure(message)
-        errorMessage = needsAuth ? nil : msg
+        // A missing CLI and an auth failure are both recoverable in-app, via
+        // the install and sign-in buttons — so each gets its own UI state
+        // instead of a generic error box the user cannot act on.
+        needsCLI = message == "error.cli_missing"
+        needsAuth = !needsCLI && AuthState.isAuthFailure(message)
+        errorMessage = (needsCLI || needsAuth) ? nil : msg
         publishSnapshot(error: msg)
     }
 

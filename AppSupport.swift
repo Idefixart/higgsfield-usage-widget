@@ -98,7 +98,7 @@ enum L10n {
         "settings.language":       [.en: "Language", .de: "Sprache"],
         "settings.save":           [.en: "Save", .de: "Speichern"],
         "settings.data_source":    [.en: "Data via higgsfield CLI", .de: "Daten via higgsfield CLI"],
-        "error.cli_missing":       [.en: "higgsfield CLI not found — brew install higgsfield", .de: "higgsfield CLI nicht gefunden — brew install higgsfield"],
+        "error.cli_missing":       [.en: "higgsfield CLI not found", .de: "higgsfield CLI nicht gefunden"],
         "error.auth":              [.en: "Not logged in — run: higgsfield auth login", .de: "Nicht eingeloggt — führe aus: higgsfield auth login"],
         "error.invalid_json":      [.en: "Invalid JSON from CLI", .de: "Ungültiges JSON vom CLI"],
         "error.login_failed":      [.en: "Sign-in did not complete", .de: "Anmeldung nicht abgeschlossen"],
@@ -107,6 +107,20 @@ enum L10n {
         "auth.button":             [.en: "Sign in to Higgsfield", .de: "Bei Higgsfield anmelden"],
         "auth.waiting":            [.en: "Waiting for browser — finish sign-in there, then this updates on its own.", .de: "Warte auf den Browser — schließe die Anmeldung dort ab, danach aktualisiert sich das hier von selbst."],
         "auth.cancel":             [.en: "Cancel", .de: "Abbrechen"],
+        "cli.title":               [.en: "One step left", .de: "Nur noch ein Schritt"],
+        "cli.body":                [.en: "Higgsfield Usage reads your credits through the higgsfield CLI. Install it once and this card disappears.", .de: "Higgsfield Usage liest deine Credits über die higgsfield CLI. Einmal installieren, dann verschwindet diese Karte."],
+        "cli.button":              [.en: "Install higgsfield CLI", .de: "higgsfield CLI installieren"],
+        "cli.installing":          [.en: "Installing @higgsfield/cli — this takes up to a minute.", .de: "Installiere @higgsfield/cli — das dauert bis zu einer Minute."],
+        "cli.retry":               [.en: "Try again", .de: "Erneut versuchen"],
+        "cli.copy":                [.en: "Copy command", .de: "Befehl kopieren"],
+        "cli.copied":              [.en: "Copied", .de: "Kopiert"],
+        "cli.node_title":          [.en: "Node.js required", .de: "Node.js erforderlich"],
+        "cli.node_body":           [.en: "The CLI ships as an npm package, so Node.js has to be installed first. Install it, then come back here.", .de: "Die CLI ist ein npm-Paket, deshalb muss zuerst Node.js installiert werden. Installieren, dann hierher zurückkommen."],
+        "cli.node_button":         [.en: "Open nodejs.org", .de: "nodejs.org öffnen"],
+        "cli.node_brew":           [.en: "With Homebrew instead:", .de: "Alternativ mit Homebrew:"],
+        "cli.privileges":          [.en: "npm may not write to its global folder. Run this in Terminal, then try again:", .de: "npm darf nicht in seinen globalen Ordner schreiben. Führe das im Terminal aus, dann erneut versuchen:"],
+        "cli.offline":             [.en: "No connection to the npm registry. Check your internet, then try again.", .de: "Keine Verbindung zur npm-Registry. Prüfe dein Internet und versuche es erneut."],
+        "cli.failed":              [.en: "Install failed: %@", .de: "Installation fehlgeschlagen: %@"],
     ]
 
     static func t(_ key: String, lang: Lang, _ args: CVarArg...) -> String {
@@ -157,15 +171,62 @@ struct AppConfig: Codable {
 
 // MARK: - CLI runner
 
-final class HiggsfieldCLI {
-    static let candidates = [
-        "/opt/homebrew/bin/higgsfield",
-        "/usr/local/bin/higgsfield",
-        "/usr/bin/higgsfield",
-    ]
+/// Finds node-based binaries for a GUI app, which inherits launchd's PATH and
+/// therefore sees none of the Homebrew or version-manager prefixes a shell
+/// would. Hits are cached because lookups run on every refresh; misses are not,
+/// so installing the CLI in a terminal is picked up without a restart.
+enum NodeToolchain {
+    private static var cache: [String: String] = [:]
 
+    /// npm can be pointed at any global prefix (`npm config set prefix`), which
+    /// no fixed list can predict — so after an install we ask npm where it put
+    /// things and remember that directory across launches.
+    static var learnedBinDirectory: String? {
+        get { UserDefaults.standard.string(forKey: "npmGlobalBin") }
+        set { UserDefaults.standard.set(newValue, forKey: "npmGlobalBin") }
+    }
+
+    static func locate(_ tool: String) -> String? {
+        let fm = FileManager.default
+        if let hit = cache[tool], fm.isExecutableFile(atPath: hit) { return hit }
+        let hit = searchDirectories()
+            .lazy
+            .map { "\($0)/\(tool)" }
+            .first { fm.isExecutableFile(atPath: $0) }
+        // Assigning nil removes the key, so only hits stay cached.
+        cache[tool] = hit
+        return hit
+    }
+
+    static func forgetCachedPaths() { cache.removeAll() }
+
+    private static func searchDirectories() -> [String] {
+        let fm = FileManager.default
+        var dirs = CLIInstall.binDirectories(home: fm.homeDirectoryForCurrentUser.path) { root in
+            (try? fm.contentsOfDirectory(atPath: root)) ?? []
+        }
+        if let learned = learnedBinDirectory { dirs.insert(learned, at: 0) }
+        return dirs
+    }
+
+    /// PATH for spawning node-based tools: the directory node actually lives in
+    /// first, since a CLI resolved under nvm cannot run against a PATH that
+    /// only knows Homebrew.
+    static func searchPath(base: String?) -> String {
+        var dirs: [String] = []
+        if let node = locate("node") {
+            dirs.append((node as NSString).deletingLastPathComponent)
+        }
+        if let learned = learnedBinDirectory { dirs.append(learned) }
+        dirs += CLIInstall.systemBinDirectories
+        dirs.append(base ?? "/usr/bin:/bin")
+        return dirs.joined(separator: ":")
+    }
+}
+
+final class HiggsfieldCLI {
     static func find() -> String? {
-        candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
+        NodeToolchain.locate("higgsfield")
     }
 
     enum CLIError: LocalizedError {
@@ -252,11 +313,11 @@ final class HiggsfieldCLI {
 
     /// The CLI is a `#!/usr/bin/env node` script, so node must be on PATH. A
     /// GUI app inherits launchd's PATH, which usually lacks the Homebrew
-    /// prefix — prepend it rather than rely on the environment.
+    /// prefix — prepend the directories we actually found tools in rather than
+    /// rely on the environment.
     private static func environment() -> [String: String] {
         var env = ProcessInfo.processInfo.environment
-        let extra = "/opt/homebrew/bin:/usr/local/bin"
-        env["PATH"] = extra + ":" + (env["PATH"] ?? "/usr/bin:/bin")
+        env["PATH"] = NodeToolchain.searchPath(base: env["PATH"])
         prepareCLIHome()
         env["HOME"] = cliHome.path
         return env
@@ -275,6 +336,104 @@ final class HiggsfieldCLI {
         let theirs = fm.homeDirectoryForCurrentUser
             .appendingPathComponent(".config/higgsfield/config.json")
         try? fm.copyItem(at: theirs, to: ours)
+    }
+
+    // MARK: One-click install
+
+    /// What a `npm install -g @higgsfield/cli` attempt left behind.
+    enum InstallOutcome: Equatable {
+        case installed
+        /// No npm on the machine at all, so there is nothing to install with.
+        case nodeMissing
+        case failed(CLIInstall.Failure)
+    }
+
+    private var installProcess: Process?
+    var isInstalling: Bool { installProcess?.isRunning ?? false }
+
+    /// A cold npm install of a scoped package runs well under a minute; past
+    /// that it is hanging on a stalled registry connection.
+    static let installTimeout: TimeInterval = 240
+
+    /// Installs the CLI for the user. Unlike the CLI calls this keeps the real
+    /// `$HOME`, so npm honours the user's own registry config and cache — only
+    /// Higgsfield credentials need the private home.
+    func installCLI(completion: @escaping (InstallOutcome) -> Void) {
+        guard !isInstalling else { return }
+        guard let npm = NodeToolchain.locate("npm") else {
+            completion(.nodeMissing)
+            return
+        }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: npm)
+        p.arguments = CLIInstall.installArguments
+        var env = ProcessInfo.processInfo.environment
+        env["PATH"] = NodeToolchain.searchPath(base: env["PATH"])
+        p.environment = env
+        let err = Pipe()
+        p.standardOutput = Pipe()
+        p.standardError = err
+        do {
+            try p.run()
+        } catch {
+            completion(.failed(.other(error.localizedDescription)))
+            return
+        }
+        installProcess = p
+
+        let deadline = DispatchTime.now() + Self.installTimeout
+        DispatchQueue.global().asyncAfter(deadline: deadline) { [weak p] in
+            guard let p, p.isRunning else { return }
+            p.terminate()
+        }
+
+        DispatchQueue.global().async { [weak self] in
+            // Read to EOF before waiting — npm is chatty enough to fill the pipe.
+            let errData = err.fileHandleForReading.readDataToEndOfFile()
+            p.waitUntilExit()
+            self?.installProcess = nil
+            let stderr = String(data: errData, encoding: .utf8) ?? ""
+
+            guard p.terminationStatus == 0 else {
+                completion(.failed(CLIInstall.classify(stderr)))
+                return
+            }
+            NodeToolchain.forgetCachedPaths()
+            if Self.find() != nil {
+                completion(.installed)
+                return
+            }
+            // Installed successfully but not into any directory we search, so
+            // the prefix is a custom one. Ask npm and remember the answer.
+            NodeToolchain.learnedBinDirectory = Self.npmGlobalBin(npm: npm, env: env)
+            NodeToolchain.forgetCachedPaths()
+            completion(Self.find() != nil ? .installed : .failed(.other(CLIInstall.summarize(stderr))))
+        }
+    }
+
+    func cancelInstall() {
+        installProcess?.terminate()
+        installProcess = nil
+    }
+
+    /// `npm prefix -g` prints the global prefix; binaries land in its `bin`.
+    private static func npmGlobalBin(npm: String, env: [String: String]) -> String? {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: npm)
+        p.arguments = ["prefix", "-g"]
+        p.environment = env
+        let out = Pipe()
+        p.standardOutput = out
+        p.standardError = Pipe()
+        guard (try? p.run()) != nil else { return nil }
+        let data = out.fileHandleForReading.readDataToEndOfFile()
+        p.waitUntilExit()
+        guard p.terminationStatus == 0,
+              let prefix = String(data: data, encoding: .utf8)?
+                  .trimmingCharacters(in: .whitespacesAndNewlines),
+              !prefix.isEmpty
+        else { return nil }
+        return "\(prefix)/bin"
     }
 
     /// Runs `higgsfield <args> --json --no-color` off the main thread.

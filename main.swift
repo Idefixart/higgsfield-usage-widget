@@ -166,6 +166,33 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         store.isSigningIn = false
     }
 
+    /// One-click install of the npm package the CLI ships as. On success the
+    /// refresh clears `needsCLI`, which is what makes the card disappear.
+    func installCLI() {
+        guard !store.isInstallingCLI else { return }
+        store.isInstallingCLI = true
+        store.cliIssue = nil
+        cli.installCLI { [weak self] outcome in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.store.isInstallingCLI = false
+                switch outcome {
+                case .installed:
+                    self.store.needsCLI = false
+                    self.refresh()
+                case .nodeMissing:
+                    self.store.cliIssue = .nodeMissing
+                case .failed(let reason):
+                    switch reason {
+                    case .needsPrivileges: self.store.cliIssue = .needsPrivileges
+                    case .offline:         self.store.cliIssue = .offline
+                    case .other(let msg):  self.store.cliIssue = .other(msg)
+                    }
+                }
+            }
+        }
+    }
+
     func showSettings() {
         popover.performClose(nil)
         if settingsController == nil {
@@ -191,7 +218,8 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             onSettings: { [weak self] in self?.showSettings() },
             onQuit: { NSApp.terminate(nil) },
             onSignIn: { [weak self] in self?.signIn() },
-            onCancelSignIn: { [weak self] in self?.cancelSignIn() }
+            onCancelSignIn: { [weak self] in self?.cancelSignIn() },
+            onInstallCLI: { [weak self] in self?.installCLI() }
         ))
         // Make NSPopover size to SwiftUI intrinsic, else top clips
         hosting.sizingOptions = [.preferredContentSize]
