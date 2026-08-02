@@ -166,6 +166,70 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
         store.isSigningIn = false
     }
 
+    /// Resolves "No workspace selected" in as few clicks as the account
+    /// allows: one workspace is chosen outright, several are offered as a
+    /// list, and an account with none falls back to the personal context —
+    /// which is what the CLI itself suggests.
+    func chooseWorkspace() {
+        guard !store.isWorkspaceBusy else { return }
+        store.isWorkspaceBusy = true
+        store.workspaceError = nil
+        cli.listWorkspaces { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch result {
+                case .success(let list) where list.count == 1:
+                    self.pickWorkspace(list[0])
+                case .success(let list) where list.isEmpty:
+                    self.applyPersonalAccount()
+                case .success(let list):
+                    self.store.isWorkspaceBusy = false
+                    self.store.workspaces = list
+                case .failure(let error):
+                    self.store.isWorkspaceBusy = false
+                    self.store.workspaceError = self.localized(error)
+                }
+            }
+        }
+    }
+
+    func pickWorkspace(_ workspace: Workspace) {
+        store.isWorkspaceBusy = true
+        store.workspaceError = nil
+        cli.selectWorkspace(id: workspace.id) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.store.isWorkspaceBusy = false
+                switch result {
+                case .success:
+                    // The refresh clears needsWorkspace, which removes the card.
+                    self.store.workspaces = []
+                    self.refresh()
+                case .failure(let error):
+                    self.store.workspaceError = self.localized(error)
+                }
+            }
+        }
+    }
+
+    private func applyPersonalAccount() {
+        cli.usePersonalAccount { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.store.isWorkspaceBusy = false
+                switch result {
+                case .success: self.refresh()
+                case .failure(let error): self.store.workspaceError = self.localized(error)
+                }
+            }
+        }
+    }
+
+    private func localized(_ error: Error) -> String {
+        let raw = error.localizedDescription
+        return L10n.strings[raw] != nil ? store.t(raw) : raw
+    }
+
     /// One-click install of the npm package the CLI ships as. On success the
     /// refresh clears `needsCLI`, which is what makes the card disappear.
     func installCLI() {
@@ -219,7 +283,9 @@ final class MenuBarController: NSObject, NSPopoverDelegate {
             onQuit: { NSApp.terminate(nil) },
             onSignIn: { [weak self] in self?.signIn() },
             onCancelSignIn: { [weak self] in self?.cancelSignIn() },
-            onInstallCLI: { [weak self] in self?.installCLI() }
+            onInstallCLI: { [weak self] in self?.installCLI() },
+            onChooseWorkspace: { [weak self] in self?.chooseWorkspace() },
+            onPickWorkspace: { [weak self] ws in self?.pickWorkspace(ws) }
         ))
         // Make NSPopover size to SwiftUI intrinsic, else top clips
         hosting.sizingOptions = [.preferredContentSize]

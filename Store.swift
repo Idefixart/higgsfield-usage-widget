@@ -19,6 +19,10 @@ final class CreditsStore: ObservableObject {
     @Published var needsCLI = false
     @Published var isInstallingCLI = false
     @Published var cliIssue: CLIIssue?
+    @Published var needsWorkspace = false
+    @Published var workspaces: [Workspace] = []
+    @Published var isWorkspaceBusy = false
+    @Published var workspaceError: String?
     @Published var language: Lang = .en
 
     /// A failed install attempt, in the shape the card renders. Separate from
@@ -99,6 +103,8 @@ final class CreditsStore: ObservableObject {
         needsAuth = false
         needsCLI = false
         cliIssue = nil
+        needsWorkspace = false
+        workspaceError = nil
         let pts = BalanceHistory.appendPrune(
             balancePoints,
             adding: BalancePoint(timestamp: Date(), credits: status.credits))
@@ -116,12 +122,13 @@ final class CreditsStore: ObservableObject {
         isLoading = false
         isStale = true
         let msg = L10n.strings[message] != nil ? t(message) : message
-        // A missing CLI and an auth failure are both recoverable in-app, via
-        // the install and sign-in buttons — so each gets its own UI state
-        // instead of a generic error box the user cannot act on.
+        // A missing CLI, an unselected workspace and an auth failure are all
+        // recoverable in-app, via their own buttons — so each gets its own UI
+        // state instead of a generic error box the user cannot act on.
         needsCLI = message == "error.cli_missing"
-        needsAuth = !needsCLI && AuthState.isAuthFailure(message)
-        errorMessage = (needsCLI || needsAuth) ? nil : msg
+        needsWorkspace = !needsCLI && WorkspaceState.isMissingSelection(message)
+        needsAuth = !needsCLI && !needsWorkspace && AuthState.isAuthFailure(message)
+        errorMessage = (needsCLI || needsWorkspace || needsAuth) ? nil : msg
         publishSnapshot(error: msg)
     }
 

@@ -331,6 +331,93 @@ struct CLIInstallCard: View {
     }
 }
 
+// MARK: - Workspace selection
+
+/// The CLI refuses to report credits until a billing workspace is picked, and
+/// the app has its own CLI session — so a colleague who never touched the
+/// terminal lands here. One button covers the common case of a single
+/// workspace; only an account with several ever sees a list.
+struct WorkspaceCard: View {
+    @ObservedObject var store: CreditsStore
+    let onChoose: () -> Void
+    let onPick: (Workspace) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "building.2.fill")
+                    .font(.system(size: 13))
+                    .foregroundColor(.hfLime)
+                Text(store.t("ws.title"))
+                    .font(.system(size: 13, weight: .semibold))
+            }
+
+            Text(bodyText)
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if store.isWorkspaceBusy {
+                ProgressView().scaleEffect(0.5).frame(width: 14, height: 14)
+            } else if store.workspaces.count > 1 {
+                VStack(spacing: 4) {
+                    ForEach(store.workspaces) { ws in
+                        workspaceRow(ws)
+                    }
+                }
+            } else {
+                Button(action: onChoose) {
+                    HStack(spacing: 6) {
+                        Image(systemName: store.workspaceError == nil ? "building.2" : "arrow.clockwise")
+                        Text(store.t(store.workspaceError == nil ? "ws.button" : "ws.retry"))
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.hfLimeSolid.opacity(0.07))
+        .cornerRadius(8)
+    }
+
+    private var bodyText: String {
+        if store.isWorkspaceBusy { return store.t("ws.loading") }
+        if let err = store.workspaceError { return store.t("ws.failed", err) }
+        if store.workspaces.count > 1 { return store.t("ws.pick") }
+        return store.t("ws.body")
+    }
+
+    private func workspaceRow(_ ws: Workspace) -> some View {
+        Button {
+            onPick(ws)
+        } label: {
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(ws.displayName)
+                        .font(.system(size: 12, weight: .medium))
+                    Text(store.t("ws.credits", Int(ws.credits.rounded()).formatted()))
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .background(Color.primary.opacity(0.06))
+            .cornerRadius(6)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 // MARK: - Popover content
 
 struct ContentView: View {
@@ -338,6 +425,8 @@ struct ContentView: View {
     let onSignIn: () -> Void
     let onCancelSignIn: () -> Void
     let onInstallCLI: () -> Void
+    let onChooseWorkspace: () -> Void
+    let onPickWorkspace: (Workspace) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -354,6 +443,10 @@ struct ContentView: View {
 
             if store.needsCLI {
                 CLIInstallCard(store: store, onInstall: onInstallCLI)
+            }
+
+            if store.needsWorkspace {
+                WorkspaceCard(store: store, onChoose: onChooseWorkspace, onPick: onPickWorkspace)
             }
 
             if store.needsAuth {
@@ -375,7 +468,8 @@ struct ContentView: View {
                 .cornerRadius(8)
             }
 
-            if store.credits == nil && store.errorMessage == nil && !store.needsAuth && !store.needsCLI {
+            if store.credits == nil && store.errorMessage == nil
+                && !store.needsAuth && !store.needsCLI && !store.needsWorkspace {
                 HStack {
                     Spacer()
                     VStack(spacing: 8) {
@@ -492,13 +586,17 @@ struct PopoverView: View {
     let onSignIn: () -> Void
     let onCancelSignIn: () -> Void
     let onInstallCLI: () -> Void
+    let onChooseWorkspace: () -> Void
+    let onPickWorkspace: (Workspace) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
             ContentView(store: store,
                         onSignIn: onSignIn,
                         onCancelSignIn: onCancelSignIn,
-                        onInstallCLI: onInstallCLI)
+                        onInstallCLI: onInstallCLI,
+                        onChooseWorkspace: onChooseWorkspace,
+                        onPickWorkspace: onPickWorkspace)
             Divider().padding(.horizontal, 14)
             VStack(spacing: 2) {
                 popButton(icon: "arrow.clockwise", label: store.t("action.refresh"), action: onRefresh)

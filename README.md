@@ -25,6 +25,11 @@ You do **not** need to be signed in on the command line either. The app keeps
 its own session (see [Why it has its own login](#why-it-has-its-own-login)) —
 click **Sign in to Higgsfield** in the popover on first launch.
 
+Because that session is its own, it also starts without a billing workspace,
+and the CLI reports no credits until one is picked. The popover handles that
+too: **Choose workspace** selects it outright when the account has exactly one,
+and otherwise lists them with their credit balances.
+
 ## Install
 
 ```bash

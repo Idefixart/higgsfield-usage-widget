@@ -121,6 +121,15 @@ enum L10n {
         "cli.privileges":          [.en: "npm may not write to its global folder. Run this in Terminal, then try again:", .de: "npm darf nicht in seinen globalen Ordner schreiben. Führe das im Terminal aus, dann erneut versuchen:"],
         "cli.offline":             [.en: "No connection to the npm registry. Check your internet, then try again.", .de: "Keine Verbindung zur npm-Registry. Prüfe dein Internet und versuche es erneut."],
         "cli.failed":              [.en: "Install failed: %@", .de: "Installation fehlgeschlagen: %@"],
+        "ws.title":                [.en: "No workspace selected", .de: "Kein Workspace ausgewählt"],
+        "ws.body":                 [.en: "Credits are billed per workspace. Pick the one this widget should track.", .de: "Credits werden pro Workspace abgerechnet. Wähle den, den dieses Widget anzeigen soll."],
+        "ws.button":               [.en: "Choose workspace", .de: "Workspace auswählen"],
+        "ws.loading":              [.en: "Loading workspaces...", .de: "Lade Workspaces..."],
+        "ws.pick":                 [.en: "Pick the workspace to track:", .de: "Wähle den Workspace zum Anzeigen:"],
+        "ws.personal":             [.en: "Personal account", .de: "Persönliches Konto"],
+        "ws.credits":              [.en: "%@ credits", .de: "%@ Credits"],
+        "ws.failed":               [.en: "Could not load workspaces: %@", .de: "Workspaces konnten nicht geladen werden: %@"],
+        "ws.retry":                [.en: "Try again", .de: "Erneut versuchen"],
     ]
 
     static func t(_ key: String, lang: Lang, _ args: CVarArg...) -> String {
@@ -338,6 +347,31 @@ final class HiggsfieldCLI {
         try? fm.copyItem(at: theirs, to: ours)
     }
 
+    // MARK: Workspace selection
+
+    /// Credits are billed per workspace, so the CLI refuses `account status`
+    /// until one is picked. Anyone who never ran the CLI in a terminal — which
+    /// is the point of this app — arrives with nothing selected.
+    func listWorkspaces(completion: @escaping (Result<[Workspace], Error>) -> Void) {
+        run(["workspace", "list"]) { result in
+            completion(result.flatMap { data in
+                Result { try WorkspaceState.list(from: data) }
+            })
+        }
+    }
+
+    /// `set` and `unset` answer with a confirmation line rather than JSON, so
+    /// only the exit status carries meaning.
+    func selectWorkspace(id: String, completion: @escaping (Result<Void, Error>) -> Void) {
+        run(["workspace", "set", id]) { completion($0.map { _ in () }) }
+    }
+
+    /// Clears the selection, which bills against the personal account — the
+    /// CLI's own suggested remedy for accounts that have no workspace.
+    func usePersonalAccount(completion: @escaping (Result<Void, Error>) -> Void) {
+        run(["workspace", "unset"]) { completion($0.map { _ in () }) }
+    }
+
     // MARK: One-click install
 
     /// What a `npm install -g @higgsfield/cli` attempt left behind.
@@ -464,8 +498,14 @@ final class HiggsfieldCLI {
             let errData = err.fileHandleForReading.readDataToEndOfFile()
             p.waitUntilExit()
             if p.terminationStatus != 0 {
-                let msg = String(data: errData, encoding: .utf8)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                // The CLI reports failures on stderr, but falling back to
+                // stdout costs nothing and matters: the message decides which
+                // recovery card is shown, and an empty one would route every
+                // failure to the sign-in card.
+                let streams = [errData, data].compactMap {
+                    String(data: $0, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                let msg = streams.first { !$0.isEmpty } ?? ""
                 completion(.failure(CLIError.failed(msg.isEmpty ? "error.auth" : msg)))
                 return
             }
